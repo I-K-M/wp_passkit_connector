@@ -18,11 +18,14 @@ final class Client_Membership_Plugin {
 	const OPTION_NAME  = 'client_membership_settings';
 
 	const QUERY_VAR_VALIDATE = 'client_membership_validate';
+	const QUERY_ARG_TOKEN    = 't';
+	const LEGACY_QUERY_TOKEN = 'cm_token';
 
 	// User meta keys
 	const UM_STATUS     = 'client_membership_status';
 	const UM_EXPIRY     = 'client_membership_expiry';
 	const UM_PASS_ID    = 'client_membership_wallet_pass_id';
+	const UM_PASS_URL   = 'client_membership_wallet_pass_url';
 	const UM_QR_TOKEN   = 'client_membership_qr_token';
 	const UM_QR_CREATED = 'client_membership_qr_token_created';
 
@@ -43,6 +46,7 @@ final class Client_Membership_Plugin {
 		add_action('plugins_loaded', [__CLASS__, 'load_textdomain']);
 		add_action('init', [__CLASS__, 'register_rewrite']);
 		add_filter('query_vars', [__CLASS__, 'register_query_vars']);
+		add_filter('redirect_canonical', [__CLASS__, 'disable_canonical_redirect_for_validation'], 10, 2);
 		add_action('template_redirect', [__CLASS__, 'maybe_handle_validation']);
 
 		add_action('admin_menu', [__CLASS__, 'register_admin_menu']);
