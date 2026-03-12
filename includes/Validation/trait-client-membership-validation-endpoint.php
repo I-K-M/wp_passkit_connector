@@ -6,6 +6,14 @@ if (!defined('ABSPATH')) {
 
 trait Client_Membership_Validation_Endpoint_Trait {
 
+	public static function disable_canonical_redirect_for_validation($redirect_url, $requested_url) {
+		if ((int) get_query_var(self::QUERY_VAR_VALIDATE) === 1) {
+			return false;
+		}
+
+		return $redirect_url;
+	}
+
 	public static function maybe_handle_validation(): void {
 		if ((int) get_query_var(self::QUERY_VAR_VALIDATE) !== 1) {
 			return;
@@ -13,7 +21,7 @@ trait Client_Membership_Validation_Endpoint_Trait {
 
 		nocache_headers();
 
-		$token = isset($_GET['t']) ? trim((string) wp_unslash($_GET['t'])) : '';
+		$token = self::get_request_token();
 		if ($token === '' || strlen($token) < 20) {
 			self::render_invalid();
 		}
@@ -53,6 +61,18 @@ trait Client_Membership_Validation_Endpoint_Trait {
 		}
 
 		self::render_html($payload);
+	}
+
+	private static function get_request_token(): string {
+		$token = '';
+		if (isset($_GET[self::QUERY_ARG_TOKEN])) {
+			$token = trim((string) wp_unslash($_GET[self::QUERY_ARG_TOKEN]));
+		} elseif (isset($_GET[self::LEGACY_QUERY_TOKEN])) {
+			// Backward compatibility for links generated before query key hardening.
+			$token = trim((string) wp_unslash($_GET[self::LEGACY_QUERY_TOKEN]));
+		}
+
+		return $token;
 	}
 
 	private static function wants_json(): bool {
