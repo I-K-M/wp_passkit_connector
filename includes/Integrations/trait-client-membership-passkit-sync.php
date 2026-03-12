@@ -8,11 +8,55 @@ trait Client_Membership_Passkit_Sync_Trait {
 
 	private static function passkit_is_configured(): bool {
 		return (
-			(string) self::setting('passkit_api_key', '') !== '' &&
-			(string) self::setting('passkit_api_secret', '') !== '' &&
+			(string) self::setting('passkit_bearer_token', '') !== '' &&
 			(string) self::setting('passkit_base_url', '') !== '' &&
 			(string) self::setting('passkit_template_id', '') !== ''
 		);
+	}
+
+	private static function format_expiry_for_passkit(string $expiry_iso): string {
+		if ($expiry_iso === '') {
+			return '';
+		}
+
+		$timestamp = strtotime($expiry_iso);
+		if (!$timestamp) {
+			return '';
+		}
+
+		return gmdate('Y-m-d\T00:00:00\Z', $timestamp);
+	}
+
+	private static function map_status_to_passkit(string $status): string {
+		switch ($status) {
+			case self::STATUS_ACTIVE:
+				return 'ACTIVE';
+			case self::STATUS_EXPIRED:
+				return 'EXPIRED';
+			case self::STATUS_REFUNDED:
+				return 'DELETED';
+			case self::STATUS_CANCELLED:
+			case self::STATUS_SUSPENDED:
+			default:
+				return 'ENROLLED';
+		}
+	}
+
+	private static function maybe_update_pass_url(int $user_id, string $pass_id, array $response): void {
+		$pass_url = '';
+
+		if (!empty($response['url']) && is_string($response['url'])) {
+			$pass_url = esc_url_raw($response['url']);
+		} else {
+			$public_base = (string) self::setting('passkit_public_base_url', '');
+			if ($public_base !== '' && $pass_id !== '') {
+				$pass_url = esc_url_raw(rtrim($public_base, '/') . '/' . rawurlencode($pass_id));
+			}
+		}
+
+		if ($pass_url !== '') {
+			update_user_meta($user_id, self::UM_PASS_URL, $pass_url);
+		}
 	}
 
 	private static function passkit_sync_for_user(int $user_id): void {
@@ -39,34 +83,56 @@ trait Client_Membership_Passkit_Sync_Trait {
 			$name = (string) $user->display_name;
 		}
 
-		$pass_id = (string) get_user_meta($user_id, self::UM_PASS_ID, true);
+		$program_id = (string) self::setting('passkit_template_id', '');
+		$tier_id    = (string) self::setting('passkit_tier_id', 'base');
+		if ($tier_id === '') {
+			$tier_id = 'base';
+		}
+
+		$expiry_date    = self::format_expiry_for_passkit($expiry_iso);
+		$passkit_status = self::map_status_to_passkit($status);
+		$validation_url = self::validation_url($token);
 
 		$payload = [
-			'template_id' => (string) self::setting('passkit_template_id', ''),
-			'member'      => [
-				'external_id' => (string) $user_id,
-				'name'        => $name,
+			'externalId' => (string) $user_id,
+			'programId'  => $program_id,
+			'tierId'     => $tier_id,
+			'person'     => [
+				'displayName'  => $name,
+				'emailAddress' => (string) $user->user_email,
 			],
-			'membership'  => [
-				'status'  => $status,
-				'expiry'  => $expiry_iso,
-				'qr_data' => self::validation_url($token),
+			'metaData'   => [
+				'metaQrDataValidation' => $validation_url,
 			],
+			'expiryDate' => $expiry_date,
+			'status'     => $passkit_status,
 		];
 
 		$client = new Client_Membership_PassKit_Client(
 			(string) self::setting('passkit_base_url', ''),
-			(string) self::setting('passkit_api_key', ''),
-			(string) self::setting('passkit_api_secret', '')
+			(string) self::setting('passkit_bearer_token', '')
 		);
 
-		if ($pass_id === '') {
-			$response = $client->create_pass($payload);
-			if (!empty($response['pass_id'])) {
-				update_user_meta($user_id, self::UM_PASS_ID, sanitize_text_field((string) $response['pass_id']));
-			}
+		$pass_id = (string) get_user_meta($user_id, self::UM_PASS_ID, true);
+		if ($pass_id !== '') {
+			$payload['id'] = $pass_id;
+			$response      = $client->update_member($payload);
 		} else {
-			$client->update_pass($pass_id, $payload);
+			$response = $client->create_member($payload);
+		}
+
+		$resolved_pass_id = '';
+		if (!empty($response['id']) && is_string($response['id'])) {
+			$resolved_pass_id = $response['id'];
+		} elseif (!empty($response['passId']) && is_string($response['passId'])) {
+			$resolved_pass_id = $response['passId'];
+		}
+
+		if ($resolved_pass_id !== '') {
+			update_user_meta($user_id, self::UM_PASS_ID, sanitize_text_field($resolved_pass_id));
+			self::maybe_update_pass_url($user_id, $resolved_pass_id, $response);
+		} elseif ($pass_id !== '') {
+			self::maybe_update_pass_url($user_id, $pass_id, $response);
 		}
 	}
 }
