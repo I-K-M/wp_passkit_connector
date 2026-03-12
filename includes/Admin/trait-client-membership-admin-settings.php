@@ -10,9 +10,10 @@ trait Client_Membership_Admin_Settings_Trait {
 		return [
 			'membership_product_id' => 0,
 			'passkit_base_url'      => 'https://api.passkit.com',
-			'passkit_api_key'       => '',
-			'passkit_api_secret'    => '',
+			'passkit_bearer_token'  => '',
 			'passkit_template_id'   => '',
+			'passkit_tier_id'       => 'base',
+			'passkit_public_base_url' => '',
 			'rate_ip_per_5m'        => 30,
 			'rate_token_per_1m'     => 10,
 			'enable_json'           => 1,
@@ -50,7 +51,7 @@ trait Client_Membership_Admin_Settings_Trait {
 			return $base;
 		}
 
-		return add_query_arg('t', rawurlencode($token), $base);
+		return add_query_arg(self::QUERY_ARG_TOKEN, rawurlencode($token), $base);
 	}
 
 	public static function register_admin_menu(): void {
@@ -111,15 +112,16 @@ trait Client_Membership_Admin_Settings_Trait {
 			'client_membership_passkit',
 			__('PassKit', self::TEXT_DOMAIN),
 			function () {
-				echo '<p>' . esc_html__('If credentials are empty, wallet synchronization is skipped.', self::TEXT_DOMAIN) . '</p>';
+				echo '<p>' . esc_html__('If bearer token or identifiers are missing, wallet synchronization is skipped.', self::TEXT_DOMAIN) . '</p>';
 			},
 			'client-membership'
 		);
 
 		add_settings_field('passkit_base_url', __('PassKit Base URL', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_base_url'], 'client-membership', 'client_membership_passkit');
-		add_settings_field('passkit_api_key', __('PassKit API Key', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_api_key'], 'client-membership', 'client_membership_passkit');
-		add_settings_field('passkit_api_secret', __('PassKit API Secret', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_api_secret'], 'client-membership', 'client_membership_passkit');
-		add_settings_field('passkit_template_id', __('PassKit Template / Program ID', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_template_id'], 'client-membership', 'client_membership_passkit');
+		add_settings_field('passkit_bearer_token', __('PassKit Bearer Token', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_bearer_token'], 'client-membership', 'client_membership_passkit');
+		add_settings_field('passkit_template_id', __('PassKit Program ID', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_template_id'], 'client-membership', 'client_membership_passkit');
+		add_settings_field('passkit_tier_id', __('PassKit Tier ID', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_tier_id'], 'client-membership', 'client_membership_passkit');
+		add_settings_field('passkit_public_base_url', __('Pass URL Base (optional)', self::TEXT_DOMAIN), [__CLASS__, 'field_passkit_public_base_url'], 'client-membership', 'client_membership_passkit');
 
 		add_settings_section(
 			'client_membership_security',
@@ -141,10 +143,11 @@ trait Client_Membership_Admin_Settings_Trait {
 		$out = [];
 		$out['membership_product_id'] = isset($input['membership_product_id']) ? absint($input['membership_product_id']) : 0;
 
-		$out['passkit_base_url']    = isset($input['passkit_base_url']) ? esc_url_raw(trim((string) $input['passkit_base_url'])) : 'https://api.passkit.com';
-		$out['passkit_api_key']     = isset($input['passkit_api_key']) ? trim((string) $input['passkit_api_key']) : '';
-		$out['passkit_api_secret']  = isset($input['passkit_api_secret']) ? trim((string) $input['passkit_api_secret']) : '';
-		$out['passkit_template_id'] = isset($input['passkit_template_id']) ? sanitize_text_field((string) $input['passkit_template_id']) : '';
+		$out['passkit_base_url']        = isset($input['passkit_base_url']) ? esc_url_raw(trim((string) $input['passkit_base_url'])) : 'https://api.passkit.com';
+		$out['passkit_bearer_token']    = isset($input['passkit_bearer_token']) ? trim((string) $input['passkit_bearer_token']) : '';
+		$out['passkit_template_id']     = isset($input['passkit_template_id']) ? sanitize_text_field((string) $input['passkit_template_id']) : '';
+		$out['passkit_tier_id']         = isset($input['passkit_tier_id']) ? sanitize_text_field((string) $input['passkit_tier_id']) : 'base';
+		$out['passkit_public_base_url'] = isset($input['passkit_public_base_url']) ? esc_url_raw(trim((string) $input['passkit_public_base_url'])) : '';
 
 		$out['rate_ip_per_5m']    = isset($input['rate_ip_per_5m']) ? max(1, absint($input['rate_ip_per_5m'])) : 30;
 		$out['rate_token_per_1m'] = isset($input['rate_token_per_1m']) ? max(1, absint($input['rate_token_per_1m'])) : 10;
@@ -214,16 +217,23 @@ trait Client_Membership_Admin_Settings_Trait {
 
 	public static function field_passkit_base_url(): void { self::render_text_input('passkit_base_url'); }
 
-	public static function field_passkit_api_key(): void {
-		self::render_text_input('passkit_api_key', 'password');
-	}
-
-	public static function field_passkit_api_secret(): void {
-		self::render_text_input('passkit_api_secret', 'password');
+	public static function field_passkit_bearer_token(): void {
+		self::render_text_input('passkit_bearer_token', 'password');
+		echo '<p class="description">' . esc_html__('Token generated in your PassKit program settings.', self::TEXT_DOMAIN) . '</p>';
 	}
 
 	public static function field_passkit_template_id(): void {
 		self::render_text_input('passkit_template_id');
+	}
+
+	public static function field_passkit_tier_id(): void {
+		self::render_text_input('passkit_tier_id');
+		echo '<p class="description">' . esc_html__('Common default is "base".', self::TEXT_DOMAIN) . '</p>';
+	}
+
+	public static function field_passkit_public_base_url(): void {
+		self::render_text_input('passkit_public_base_url');
+		echo '<p class="description">' . esc_html__('Optional public URL prefix to construct saved pass links from pass IDs.', self::TEXT_DOMAIN) . '</p>';
 	}
 
 	public static function field_rate_ip_per_5m(): void { self::render_number_input('rate_ip_per_5m', 1); }
@@ -240,7 +250,7 @@ trait Client_Membership_Admin_Settings_Trait {
 		$exp    = isset($payload['expiry']) ? (string) $payload['expiry'] : '';
 
 		$headline = self::status_headline($status, $active);
-		$icon     = $active ? '+' : '-';
+		$icon     = $active ? '✅' : '❌';
 		$accent   = $active ? '#39ff14' : '#ff1744';
 
 		$brand_name       = self::brand_name();
