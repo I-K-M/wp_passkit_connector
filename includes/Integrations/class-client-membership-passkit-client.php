@@ -6,18 +6,15 @@ if (!defined('ABSPATH')) {
 
 /**
  * Minimal PassKit client.
- * Replace endpoints and payload to match the real PassKit API used on the project.
  */
 final class Client_Membership_PassKit_Client {
 
 	private string $base_url;
-	private string $api_key;
-	private string $api_secret;
+	private string $bearer_token;
 
-	public function __construct(string $base_url, string $api_key, string $api_secret) {
-		$this->base_url   = rtrim($base_url, '/');
-		$this->api_key    = $api_key;
-		$this->api_secret = $api_secret;
+	public function __construct(string $base_url, string $bearer_token) {
+		$this->base_url     = rtrim($base_url, '/');
+		$this->bearer_token = $bearer_token;
 	}
 
 	private function request(string $method, string $path, ?array $body = null): array {
@@ -25,7 +22,7 @@ final class Client_Membership_PassKit_Client {
 			'method'  => $method,
 			'timeout' => 20,
 			'headers' => [
-				'Authorization' => 'Basic ' . base64_encode($this->api_key . ':' . $this->api_secret),
+				'Authorization' => 'Bearer ' . $this->bearer_token,
 				'Content-Type'  => 'application/json',
 				'Accept'        => 'application/json',
 			],
@@ -59,11 +56,11 @@ final class Client_Membership_PassKit_Client {
 		return $data;
 	}
 
-	public function create_pass(array $payload): array {
-		return $this->request('POST', '/v1/passes/create', $payload);
+	public function create_member(array $payload): array {
+		return $this->request('POST', '/members/member', $payload);
 	}
 
-	public function update_pass(string $pass_id, array $payload): array {
-		return $this->request('PATCH', '/v1/passes/' . rawurlencode($pass_id), $payload);
+	public function update_member(array $payload): array {
+		return $this->request('PUT', '/members/member', $payload);
 	}
 }
